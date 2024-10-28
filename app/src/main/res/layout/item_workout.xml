@@ -1,0 +1,86 @@
+<!-- res/layout/item_workout.xml -->
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:background="@color/black">
+
+    <!-- Image of the exercise -->
+    <ImageView
+        android:id="@+id/ivExerciseImage"
+        android:layout_width="60dp"
+        android:layout_height="60dp"
+        android:src="@drawable/exercise_image_placeholder"
+        android:contentDescription="Exercise image"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginBottom="8dp" />
+
+    <!-- Editable Exercise Name -->
+    <EditText
+        android:id="@+id/etExerciseName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Exercise Name"
+        android:textColor="@android:color/white"
+        android:inputType="text"
+        android:textSize="18sp"
+        android:background="@android:color/darker_gray" />
+
+    <!-- Section for adding Sets and Weight -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:paddingTop="8dp">
+
+        <EditText
+            android:id="@+id/etReps"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="Reps"
+            android:textColor="@android:color/white"
+            android:inputType="number"
+            android:background="@android:color/darker_gray" />
+
+        <EditText
+            android:id="@+id/etWeight"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="Weight"
+            android:textColor="@android:color/white"
+            android:inputType="numberDecimal"
+            android:background="@android:color/darker_gray" />
+
+        <!-- Button to Add Set -->
+        <Button
+            android:id="@+id/btnAddSet"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Add Set"
+            android:textColor="@android:color/white"
+            android:layout_gravity="center_vertical" />
+    </LinearLayout>
+
+    <!-- Display section for added sets and weights -->
+    <TextView
+        android:id="@+id/tvSetsList"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="@android:color/white"
+        android:text="Sets will be displayed here"
+        android:paddingTop="8dp" />
+
+    <!-- Button to Delete the Workout -->
+    <Button
+        android:id="@+id/btnDeleteWorkout"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Delete Workout"
+        android:textColor="@android:color/white"
+        android:layout_gravity="right"
+        android:paddingTop="8dp" />
+</LinearLayout>
