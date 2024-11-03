@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.HashMap;
 import java.util.Map;
+import androidx.core.splashscreen.SplashScreen;
 
 public class MainActivity extends AppCompatActivity {
     private static final String FILE_NAME = "workout_records.json";
@@ -45,6 +46,8 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        SplashScreen.installSplashScreen(this);
         setContentView(R.layout.activity_main); // Ensure this layout file exists
         loadWorkoutRecords();
 

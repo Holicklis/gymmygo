@@ -6,4 +6,11 @@
     </style>
 
     <style name="Theme.GymmyGo" parent="Base.Theme.GymmyGo" />
+
+    <style name="Theme.splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/black</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/gymmygo_low_back</item>
+        <item name="windowSplashScreenAnimationDuration">3000</item>
+        <item name="postSplashScreenTheme">@style/Base.Theme.GymmyGo</item>
+    </style>
 </resources>

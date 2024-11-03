@@ -1,11 +1,11 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
-    <style name="Base.Theme.GymmyGo" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Customize your dark theme here. -->
-        <!-- <item name="colorPrimary">@color/my_dark_primary</item> -->
-    </style>
 
-    <style name="Theme.GymmyGo" parent="Base.Theme.GymmyGo" />
+    <style name="Theme.GymmyGo" parent="Base.Theme.GymmyGo">
+        <!-- Transparent system bars for edge-to-edge. -->
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">?attr/isLightTheme</item>
+    </style>
 
     <style name="Theme.splash" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/black</item>
