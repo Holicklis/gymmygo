@@ -36,11 +36,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-/**
- * A simple {@link Fragment} subclass.
- * Use the {@link WorkoutPage#newInstance} factory method to
- * create an instance of this fragment.
- */
 public class WorkoutPage extends Fragment {
     private static final String FILE_NAME = "workout_records.json";
     private Gson gson = new Gson();
@@ -52,32 +47,17 @@ public class WorkoutPage extends Fragment {
     private WorkoutAdapter adapter;
     private List<Workout> workoutList = new ArrayList<>(); // For the RecyclerView
 
-//    @Override
-//    public @NonNull View onCreateView(
-//            @NonNull LayoutInflater inflater,
-//            ViewGroup container,
-//            Bundle savedInstanceState) {
-//        super.onCreate(savedInstanceState);
-//        return inflater.inflate(R.layout.fragment_workout_page, container, true);
-//    }
     @Override
     public void onViewCreated(@NonNull View view, Bundle savedInstanceState){
 
-//        setContentView(R.layout.activity_main); // Ensure this layout file exists
         loadWorkoutRecords();
-
         // Initialize selectedDate to current date without time
         selectedDate.setTime(getDateWithoutTime(new Date()));
 
         Button btnShowCalendar = view.findViewById(R.id.btnShowCalendar);
         btnShowCalendar.setOnClickListener(v -> showCalendarDialog());
 
-        // Apply window insets
-        ViewCompat.setOnApplyWindowInsetsListener(view.findViewById(R.id.main), (v, insets) -> {
-            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
-            return insets;
-        });
+
 
         // Initialize RecyclerView
         RecyclerView rvWorkoutList = view.findViewById(R.id.rvWorkoutList);
@@ -212,44 +192,10 @@ public class WorkoutPage extends Fragment {
         cal.set(Calendar.MILLISECOND, 0);
         return cal.getTime();
     }
-    // TODO: Rename parameter arguments, choose names that match
-    // the fragment initialization parameters, e.g. ARG_ITEM_NUMBER
-    private static final String ARG_PARAM1 = "param1";
-    private static final String ARG_PARAM2 = "param2";
-
-    // TODO: Rename and change types of parameters
-    private String mParam1;
-    private String mParam2;
-
-    public WorkoutPage() {
-        // Required empty public constructor
-    }
-
-    /**
-     * Use this factory method to create a new instance of
-     * this fragment using the provided parameters.
-     *
-     * @param param1 Parameter 1.
-     * @param param2 Parameter 2.
-     * @return A new instance of fragment WorkoutPage.
-     */
-    // TODO: Rename and change types and number of parameters
-    public static WorkoutPage newInstance(String param1, String param2) {
-        WorkoutPage fragment = new WorkoutPage();
-        Bundle args = new Bundle();
-        args.putString(ARG_PARAM1, param1);
-        args.putString(ARG_PARAM2, param2);
-        fragment.setArguments(args);
-        return fragment;
-    }
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        if (getArguments() != null) {
-            mParam1 = getArguments().getString(ARG_PARAM1);
-            mParam2 = getArguments().getString(ARG_PARAM2);
-        }
     }
 
     @Override

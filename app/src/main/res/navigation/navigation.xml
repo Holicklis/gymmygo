@@ -2,4 +2,11 @@
 <navigation xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
-    android:id="@+id/navigation" />
+    android:id="@+id/navigation"
+    app:startDestination="@id/workoutPage">
+    <fragment
+        android:id="@+id/workoutPage"
+        android:name="hku.cs.comp3330.section1a2024.group19.gymmygo.WorkoutPage"
+        android:label="fragment_workout_page"
+        tools:layout="@layout/fragment_workout_page" />
+</navigation>
