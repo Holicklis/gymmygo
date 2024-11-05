@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
-
     <item
-        android:id="@+id/WorkoutPageItem"
+        android:id="@+id/workoutPage"
         android:title="Workout" />
+    <item
+        android:id="@+id/myPetPage"
+        android:title="My Pet" />
+    <item
+        android:id="@+id/profilePage"
+        android:title="Profile" />
 </menu>

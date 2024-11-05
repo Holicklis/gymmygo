@@ -9,4 +9,14 @@
         android:name="hku.cs.comp3330.section1a2024.group19.gymmygo.WorkoutPage"
         android:label="fragment_workout_page"
         tools:layout="@layout/fragment_workout_page" />
+    <fragment
+        android:id="@+id/myPetPage"
+        android:name="hku.cs.comp3330.section1a2024.group19.gymmygo.MyPetPage"
+        android:label="fragment_my_pet_page"
+        tools:layout="@layout/fragment_my_pet_page" />
+    <fragment
+        android:id="@+id/profilePage"
+        android:name="hku.cs.comp3330.section1a2024.group19.gymmygo.ProfilePage"
+        android:label="fragment_profile_page"
+        tools:layout="@layout/fragment_profile_page" />
 </navigation>
