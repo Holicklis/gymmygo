@@ -19,4 +19,9 @@
         android:name="hku.cs.comp3330.section1a2024.group19.gymmygo.ProfilePage"
         android:label="fragment_profile_page"
         tools:layout="@layout/fragment_profile_page" />
+    <fragment
+        android:id="@+id/videoPage"
+        android:name="hku.cs.comp3330.section1a2024.group19.gymmygo.VideoPageFragment"
+        android:label="fragment_video_page"
+        tools:layout="@layout/fragment_video_page" />
 </navigation>

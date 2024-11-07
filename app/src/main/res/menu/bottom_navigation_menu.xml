@@ -2,11 +2,21 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
     <item
         android:id="@+id/workoutPage"
-        android:title="Workout" />
+        android:icon="@drawable/ic_workout"
+    android:title="Workout" />
+
     <item
         android:id="@+id/myPetPage"
-        android:title="My Pet" />
+        android:icon="@drawable/ic_pet"
+    android:title="My Pet" />
+
     <item
         android:id="@+id/profilePage"
-        android:title="Profile" />
+        android:icon="@drawable/ic_profile"
+    android:title="Profile" />
+
+    <item
+        android:id="@+id/videoPage"
+        android:icon="@drawable/ic_video"
+    android:title="Video" />
 </menu>
