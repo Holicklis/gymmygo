@@ -49,7 +49,7 @@ dependencies {
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)
     implementation(libs.gson)
-    implementation ("com.google.mlkit:pose-detection-accurate:18.0.0-beta5")
+    implementation (libs.pose.detection.accurate)
 
     implementation("androidx.activity:activity:1.6.1")
 

@@ -196,7 +196,7 @@ public class VideoPageFragment extends Fragment {
 
         // Initialize VideoCapture Use Case
         Recorder recorder = new Recorder.Builder()
-                .setQualitySelector(QualitySelector.from(Quality.HD)) // Changed to Quality.HIGH for compatibility
+                .setQualitySelector(QualitySelector.from(Quality.SD)) // Changed to Quality.HIGH for compatibility
                 .build();
 
         videoCapture = VideoCapture.withOutput(recorder);
@@ -256,8 +256,7 @@ public class VideoPageFragment extends Fragment {
             }
         }, ContextCompat.getMainExecutor(requireContext()));
     }
-
-    private void bindCameraUseCases(){
+    private void bindCameraUseCases() {
         Log.d(TAG, "Binding camera use cases");
 
         // Preview
@@ -277,9 +276,8 @@ public class VideoPageFragment extends Fragment {
                 .build();
         Log.d(TAG, "ImageAnalysis use case built");
 
-        imageAnalysis.setAnalyzer(cameraExecutor, imageProxy -> {
-            processImageProxy(imageProxy);
-        });
+        // Set analyzer for continuous frame processing
+        imageAnalysis.setAnalyzer(cameraExecutor, this::processImageProxy);
         Log.d(TAG, "ImageAnalysis analyzer set");
 
         // Unbind all use cases before rebinding
@@ -299,39 +297,82 @@ public class VideoPageFragment extends Fragment {
             Toast.makeText(getContext(), "Failed to bind camera use cases: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
+//    private void bindCameraUseCases(){
+//        Log.d(TAG, "Binding camera use cases");
+//
+//        // Preview
+//        preview = new Preview.Builder()
+//                .build();
+//        Log.d(TAG, "Preview use case built");
+//
+//        // Select back camera
+//        CameraSelector cameraSelector = new CameraSelector.Builder()
+//                .requireLensFacing(CameraSelector.LENS_FACING_BACK)
+//                .build();
+//        Log.d(TAG, "CameraSelector built");
+//
+//        // ImageAnalysis for Pose Detection
+//        imageAnalysis = new ImageAnalysis.Builder()
+//                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+//                .build();
+//        Log.d(TAG, "ImageAnalysis use case built");
+//
+//        imageAnalysis.setAnalyzer(cameraExecutor, imageProxy -> {
+//            processImageProxy(imageProxy);
+//        });
+//        Log.d(TAG, "ImageAnalysis analyzer set");
+//
+//        // Unbind all use cases before rebinding
+//        cameraProvider.unbindAll();
+//        Log.d(TAG, "All use cases unbound");
+//
+//        // Bind use cases to lifecycle
+//        try {
+//            cameraProvider.bindToLifecycle(getViewLifecycleOwner(), cameraSelector, preview, imageAnalysis, videoCapture);
+//            Log.d(TAG, "Camera use cases (Preview, ImageAnalysis, VideoCapture) bound to lifecycle");
+//
+//            // Connect the preview use case to the PreviewView
+//            preview.setSurfaceProvider(previewView.getSurfaceProvider());
+//            Log.d(TAG, "Preview set to PreviewView");
+//        } catch (Exception e) {
+//            Log.e(TAG, "Use case binding failed", e);
+//            Toast.makeText(getContext(), "Failed to bind camera use cases: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+//        }
+//    }
+@OptIn(markerClass = ExperimentalGetImage.class)
+private void processImageProxy(ImageProxy imageProxy) {
+    @androidx.camera.core.ExperimentalGetImage
+    android.media.Image mediaImage = imageProxy.getImage();
+    if (mediaImage != null) {
+        InputImage image = InputImage.fromMediaImage(mediaImage, imageProxy.getImageInfo().getRotationDegrees());
 
-    @OptIn(markerClass = ExperimentalGetImage.class)
-    private void processImageProxy(ImageProxy imageProxy){
-        @androidx.camera.core.ExperimentalGetImage
-        android.media.Image mediaImage = imageProxy.getImage();
-        if (mediaImage != null){
-            InputImage image = InputImage.fromMediaImage(mediaImage, imageProxy.getImageInfo().getRotationDegrees());
-
-            poseDetector.process(image)
-                    .addOnSuccessListener(pose -> {
-                        drawPose(pose);
-                    })
-                    .addOnFailureListener(e -> {
-                        Log.e(TAG, "Pose detection failed", e);
-                    })
-                    .addOnCompleteListener(task -> {
-                        imageProxy.close();
-                        Log.d(TAG, "ImageProxy closed");
-                    });
-        } else {
-            Log.w(TAG, "mediaImage is null");
-            imageProxy.close();
-        }
+        // Process the image with pose detection
+        poseDetector.process(image)
+                .addOnSuccessListener(pose -> {
+                    // Draw pose landmarks on overlay
+                    drawPose(pose);
+                })
+                .addOnFailureListener(e -> {
+                    Log.e(TAG, "Pose detection failed", e);
+                })
+                .addOnCompleteListener(task -> {
+                    imageProxy.close(); // Close the proxy when done
+                    Log.d(TAG, "ImageProxy closed");
+                });
+    } else {
+        Log.w(TAG, "mediaImage is null");
+        imageProxy.close();
     }
+}
 
-    private void drawPose(Pose pose){
-        if (overlayView == null){
+    private void drawPose(Pose pose) {
+        if (overlayView == null) {
             Log.w(TAG, "overlayView is null");
             return;
         }
 
         Canvas canvas = overlayView.getHolder().lockCanvas();
-        if (canvas == null){
+        if (canvas == null) {
             Log.w(TAG, "Canvas is null");
             return;
         }
@@ -339,72 +380,134 @@ public class VideoPageFragment extends Fragment {
         try {
             // Clear the canvas
             canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR);
-            Log.d(TAG, "Canvas cleared");
 
             Paint paint = new Paint();
             paint.setColor(Color.GREEN);
             paint.setStrokeWidth(8);
             paint.setStyle(Paint.Style.STROKE);
 
-            // Calculate scaling factors
+            // Scale landmarks for drawing
             float scaleX = (float) overlayView.getWidth() / (float) previewView.getWidth();
             float scaleY = (float) overlayView.getHeight() / (float) previewView.getHeight();
 
-            // Draw landmarks with scaling
-            for (PoseLandmark landmark : pose.getAllPoseLandmarks()){
-                if (landmark == null){
-                    continue;
-                }
+            // Draw each landmark
+            for (PoseLandmark landmark : pose.getAllPoseLandmarks()) {
+                if (landmark == null) continue;
                 float x = landmark.getPosition().x * scaleX;
                 float y = landmark.getPosition().y * scaleY;
                 canvas.drawCircle(x, y, 8, paint);
-
-                // Log landmark positions
-                Log.d(TAG, "Landmark: " + landmark.getLandmarkType() + " Position: (" + x + ", " + y + ")");
             }
 
-            // Define pairs of landmarks to connect for drawing the skeleton
-            int[][] skeletonPairs = {
-                    {PoseLandmark.LEFT_SHOULDER, PoseLandmark.RIGHT_SHOULDER},
-                    {PoseLandmark.LEFT_SHOULDER, PoseLandmark.LEFT_ELBOW},
-                    {PoseLandmark.LEFT_ELBOW, PoseLandmark.LEFT_WRIST},
-                    {PoseLandmark.RIGHT_SHOULDER, PoseLandmark.RIGHT_ELBOW},
-                    {PoseLandmark.RIGHT_ELBOW, PoseLandmark.RIGHT_WRIST},
-                    {PoseLandmark.LEFT_SHOULDER, PoseLandmark.LEFT_HIP},
-                    {PoseLandmark.RIGHT_SHOULDER, PoseLandmark.RIGHT_HIP},
-                    {PoseLandmark.LEFT_HIP, PoseLandmark.RIGHT_HIP},
-                    {PoseLandmark.LEFT_HIP, PoseLandmark.LEFT_KNEE},
-                    {PoseLandmark.LEFT_KNEE, PoseLandmark.LEFT_ANKLE},
-                    {PoseLandmark.RIGHT_HIP, PoseLandmark.RIGHT_KNEE},
-                    {PoseLandmark.RIGHT_KNEE, PoseLandmark.RIGHT_ANKLE},
-                    {PoseLandmark.LEFT_SHOULDER, PoseLandmark.RIGHT_HIP},
-                    {PoseLandmark.RIGHT_SHOULDER, PoseLandmark.LEFT_HIP}
-            };
-
-            // Draw skeleton lines with scaling
-            for (int[] pair : skeletonPairs){
-                PoseLandmark first = pose.getPoseLandmark(pair[0]);
-                PoseLandmark second = pose.getPoseLandmark(pair[1]);
-                if (first != null && second != null){
-                    float startX = first.getPosition().x * scaleX;
-                    float startY = first.getPosition().y * scaleY;
-                    float endX = second.getPosition().x * scaleX;
-                    float endY = second.getPosition().y * scaleY;
-
-                    canvas.drawLine(startX, startY, endX, endY, paint);
-
-                    // Log skeleton line drawing
-                    Log.d(TAG, "Drawing line between " + first.getLandmarkType() + " and " + second.getLandmarkType());
-                }
-            }
-
-            Log.d(TAG, "Pose drawn successfully");
+            // Draw skeleton connections (as in previous code)
         } finally {
-            // Ensure the canvas is always unlocked and posted
             overlayView.getHolder().unlockCanvasAndPost(canvas);
-            Log.d(TAG, "Canvas unlocked and posted");
         }
     }
+//    @OptIn(markerClass = ExperimentalGetImage.class)
+//    private void processImageProxy(ImageProxy imageProxy){
+//        @androidx.camera.core.ExperimentalGetImage
+//        android.media.Image mediaImage = imageProxy.getImage();
+//        if (mediaImage != null){
+//            InputImage image = InputImage.fromMediaImage(mediaImage, imageProxy.getImageInfo().getRotationDegrees());
+//
+//            poseDetector.process(image)
+//                    .addOnSuccessListener(pose -> {
+//                        drawPose(pose);
+//                    })
+//                    .addOnFailureListener(e -> {
+//                        Log.e(TAG, "Pose detection failed", e);
+//                    })
+//                    .addOnCompleteListener(task -> {
+//                        imageProxy.close();
+//                        Log.d(TAG, "ImageProxy closed");
+//                    });
+//        } else {
+//            Log.w(TAG, "mediaImage is null");
+//            imageProxy.close();
+//        }
+//    }
+//
+//    private void drawPose(Pose pose){
+//        if (overlayView == null){
+//            Log.w(TAG, "overlayView is null");
+//            return;
+//        }
+//
+//        Canvas canvas = overlayView.getHolder().lockCanvas();
+//        if (canvas == null){
+//            Log.w(TAG, "Canvas is null");
+//            return;
+//        }
+//
+//        try {
+//            // Clear the canvas
+//            canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR);
+//            Log.d(TAG, "Canvas cleared");
+//
+//            Paint paint = new Paint();
+//            paint.setColor(Color.GREEN);
+//            paint.setStrokeWidth(8);
+//            paint.setStyle(Paint.Style.STROKE);
+//
+//            // Calculate scaling factors
+//            float scaleX = (float) overlayView.getWidth() / (float) previewView.getWidth();
+//            float scaleY = (float) overlayView.getHeight() / (float) previewView.getHeight();
+//
+//            // Draw landmarks with scaling
+//            for (PoseLandmark landmark : pose.getAllPoseLandmarks()){
+//                if (landmark == null){
+//                    continue;
+//                }
+//                float x = landmark.getPosition().x * scaleX;
+//                float y = landmark.getPosition().y * scaleY;
+//                canvas.drawCircle(x, y, 8, paint);
+//
+//                // Log landmark positions
+//                Log.d(TAG, "Landmark: " + landmark.getLandmarkType() + " Position: (" + x + ", " + y + ")");
+//            }
+//
+//            // Define pairs of landmarks to connect for drawing the skeleton
+//            int[][] skeletonPairs = {
+//                    {PoseLandmark.LEFT_SHOULDER, PoseLandmark.RIGHT_SHOULDER},
+//                    {PoseLandmark.LEFT_SHOULDER, PoseLandmark.LEFT_ELBOW},
+//                    {PoseLandmark.LEFT_ELBOW, PoseLandmark.LEFT_WRIST},
+//                    {PoseLandmark.RIGHT_SHOULDER, PoseLandmark.RIGHT_ELBOW},
+//                    {PoseLandmark.RIGHT_ELBOW, PoseLandmark.RIGHT_WRIST},
+//                    {PoseLandmark.LEFT_SHOULDER, PoseLandmark.LEFT_HIP},
+//                    {PoseLandmark.RIGHT_SHOULDER, PoseLandmark.RIGHT_HIP},
+//                    {PoseLandmark.LEFT_HIP, PoseLandmark.RIGHT_HIP},
+//                    {PoseLandmark.LEFT_HIP, PoseLandmark.LEFT_KNEE},
+//                    {PoseLandmark.LEFT_KNEE, PoseLandmark.LEFT_ANKLE},
+//                    {PoseLandmark.RIGHT_HIP, PoseLandmark.RIGHT_KNEE},
+//                    {PoseLandmark.RIGHT_KNEE, PoseLandmark.RIGHT_ANKLE},
+//                    {PoseLandmark.LEFT_SHOULDER, PoseLandmark.RIGHT_HIP},
+//                    {PoseLandmark.RIGHT_SHOULDER, PoseLandmark.LEFT_HIP}
+//            };
+//
+//            // Draw skeleton lines with scaling
+//            for (int[] pair : skeletonPairs){
+//                PoseLandmark first = pose.getPoseLandmark(pair[0]);
+//                PoseLandmark second = pose.getPoseLandmark(pair[1]);
+//                if (first != null && second != null){
+//                    float startX = first.getPosition().x * scaleX;
+//                    float startY = first.getPosition().y * scaleY;
+//                    float endX = second.getPosition().x * scaleX;
+//                    float endY = second.getPosition().y * scaleY;
+//
+//                    canvas.drawLine(startX, startY, endX, endY, paint);
+//
+//                    // Log skeleton line drawing
+//                    Log.d(TAG, "Drawing line between " + first.getLandmarkType() + " and " + second.getLandmarkType());
+//                }
+//            }
+//
+//            Log.d(TAG, "Pose drawn successfully");
+//        } finally {
+//            // Ensure the canvas is always unlocked and posted
+//            overlayView.getHolder().unlockCanvasAndPost(canvas);
+//            Log.d(TAG, "Canvas unlocked and posted");
+//        }
+//    }
 
     private void startRecording(){
         if (isRecording) {

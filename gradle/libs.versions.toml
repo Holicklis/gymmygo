@@ -10,6 +10,7 @@ constraintlayout = "2.1.4"
 navigationFragment = "2.8.3"
 cameraView = "1.4.0"
 cameraLifecycle = "1.4.0"
+poseDetectionAccurate = "18.0.0-beta5"
 visionCommon = "17.3.0"
 poseDetectionCommon = "17.0.0"
 poseDetection = "17.0.0"
@@ -27,6 +28,7 @@ navigation-fragment = { module = "androidx.navigation:navigation-fragment", vers
 navigation-ui = { module = "androidx.navigation:navigation-ui", version.ref = "navigationFragment" }
 camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "cameraView" }
 camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "cameraLifecycle" }
+pose-detection-accurate = { module = "com.google.mlkit:pose-detection-accurate", version.ref = "poseDetectionAccurate" }
 vision-common = { group = "com.google.mlkit", name = "vision-common", version.ref = "visionCommon" }
 pose-detection-common = { group = "com.google.mlkit", name = "pose-detection-common", version.ref = "poseDetectionCommon" }
 pose-detection = { group = "com.google.mlkit", name = "pose-detection", version.ref = "poseDetection" }
