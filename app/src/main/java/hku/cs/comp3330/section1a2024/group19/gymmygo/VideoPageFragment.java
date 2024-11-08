@@ -104,6 +104,7 @@ public class VideoPageFragment extends Fragment {
                         .build();
         poseDetector = PoseDetection.getClient(options);
         Log.d(TAG, "Pose detector initialized with STREAM_MODE");
+        Toast.makeText(getContext(), "Pose detector initialized", Toast.LENGTH_SHORT).show();
 
         // Initialize the permissions launcher
         requestPermissionLauncher = registerForActivityResult(
@@ -495,10 +496,18 @@ public class VideoPageFragment extends Fragment {
         videoView.setVideoURI(videoUri);
         videoView.start();
 
+        // Hide VideoView after playing
+        videoView.setOnCompletionListener(mp -> {
+            videoView.setVisibility(View.GONE); // Hide the VideoView after playback
+            previewView.setVisibility(View.VISIBLE); // Show the camera preview again
+            Log.d(TAG, "Video playback completed, returning to camera preview");
+        });
+
         Toast.makeText(getActivity(), "Video saved and playing", Toast.LENGTH_SHORT).show();
 
         btnSave.setVisibility(View.GONE);
         btnRecord.setVisibility(View.VISIBLE);
     }
+
 
 }
