@@ -21,4 +21,3 @@ dependencyResolutionManagement {
 
 rootProject.name = "Gymmy Go"
 include(":app")
-include(":opencv")
