@@ -1,2 +1,0 @@
-ninja: Entering directory `/Users/holicklis/second/gymmygo/opencv/.cxx/Debug/3s651uo4/arm64-v8a'
-ninja: no work to do.
