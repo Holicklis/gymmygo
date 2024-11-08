@@ -1,0 +1,4 @@
+/Users/holicklis/Library/Android/sdk/cmake/3.22.1/bin/ninja \
+  -C \
+  /Users/holicklis/second/gymmygo/opencv/.cxx/Debug/3s651uo4/x86_64 \
+  opencv_jni_shared

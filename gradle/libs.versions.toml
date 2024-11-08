@@ -8,6 +8,11 @@ material = "1.12.0"
 activity = "1.9.2"
 constraintlayout = "2.1.4"
 navigationFragment = "2.8.3"
+cameraView = "1.4.0"
+cameraLifecycle = "1.4.0"
+visionCommon = "17.3.0"
+poseDetectionCommon = "17.0.0"
+poseDetection = "17.0.0"
 
 [libraries]
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -20,6 +25,11 @@ constraintlayout = { group = "androidx.constraintlayout", name = "constraintlayo
 gson = { group = "com.google.code.gson", name = "gson", version = "2.8.8" }
 navigation-fragment = { module = "androidx.navigation:navigation-fragment", version.ref = "navigationFragment" }
 navigation-ui = { module = "androidx.navigation:navigation-ui", version.ref = "navigationFragment" }
+camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "cameraView" }
+camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "cameraLifecycle" }
+vision-common = { group = "com.google.mlkit", name = "vision-common", version.ref = "visionCommon" }
+pose-detection-common = { group = "com.google.mlkit", name = "pose-detection-common", version.ref = "poseDetectionCommon" }
+pose-detection = { group = "com.google.mlkit", name = "pose-detection", version.ref = "poseDetection" }
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 
