@@ -139,19 +139,13 @@ public class VideoPageFragment extends Fragment {
     }
 
     private boolean hasPermissions() {
-        boolean hasCamera = ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED;
-        boolean hasAudio = ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
-        boolean hasWriteStorage = ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
-        boolean hasReadStorage = ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
-
-        Log.d(TAG, "Permissions - CAMERA: " + hasCamera + ", RECORD_AUDIO: " + hasAudio +
-                ", WRITE_EXTERNAL_STORAGE: " + hasWriteStorage + ", READ_EXTERNAL_STORAGE: " + hasReadStorage);
-
-        return hasCamera && hasAudio && hasWriteStorage && hasReadStorage;
+        return ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED &&
+                ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED &&
+                ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED &&
+                ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
     }
 
     private void requestPermissions() {
-        Log.d(TAG, "Launching permission request");
         requestPermissionLauncher.launch(new String[]{
                 Manifest.permission.CAMERA,
                 Manifest.permission.RECORD_AUDIO,
@@ -159,6 +153,7 @@ public class VideoPageFragment extends Fragment {
                 Manifest.permission.READ_EXTERNAL_STORAGE
         });
     }
+
 
     @Override
     public void onDestroy() {
@@ -173,16 +168,37 @@ public class VideoPageFragment extends Fragment {
         }
     }
 
+    private static final int REQUEST_CODE_PERMISSIONS = 10;
+    private final String[] REQUIRED_PERMISSIONS = new String[]{
+            Manifest.permission.CAMERA,
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.WRITE_EXTERNAL_STORAGE,
+            Manifest.permission.READ_EXTERNAL_STORAGE
+    };
+
+    private boolean allPermissionsGranted() {
+        for (String permission : REQUIRED_PERMISSIONS) {
+            if (ContextCompat.checkSelfPermission(requireContext(), permission) != PackageManager.PERMISSION_GRANTED) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState){
         View rootView = inflater.inflate(R.layout.fragment_video_page, container, false);
         Log.d(TAG, "Fragment view created");
 
+        if (!allPermissionsGranted()) {
+            requestPermissions(REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS);
+        }
+
         // Initialize views
-        previewView = rootView.findViewById(R.id.previewView);
-        overlayView = rootView.findViewById(R.id.overlayView);
-        videoView = rootView.findViewById(R.id.video_view);
+        //previewView = rootView.findViewById(R.id.previewView);
+        //overlayView = rootView.findViewById(R.id.overlayView);
+        //videoView = rootView.findViewById(R.id.video_view);
         btnRecord = rootView.findViewById(R.id.btn_record);
         btnStop = rootView.findViewById(R.id.btn_stop);
         btnSave = rootView.findViewById(R.id.btn_save);
@@ -257,46 +273,33 @@ public class VideoPageFragment extends Fragment {
         }, ContextCompat.getMainExecutor(requireContext()));
     }
     private void bindCameraUseCases() {
-        Log.d(TAG, "Binding camera use cases");
-
-        // Preview
-        preview = new Preview.Builder()
-                .build();
-        Log.d(TAG, "Preview use case built");
-
-        // Select back camera
         CameraSelector cameraSelector = new CameraSelector.Builder()
                 .requireLensFacing(CameraSelector.LENS_FACING_BACK)
                 .build();
-        Log.d(TAG, "CameraSelector built");
 
-        // ImageAnalysis for Pose Detection
+        // Setup Preview
+        preview = new Preview.Builder().build();
+        preview.setSurfaceProvider(previewView.getSurfaceProvider());
+
+        // Setup Image Analysis for Pose Detection
         imageAnalysis = new ImageAnalysis.Builder()
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build();
-        Log.d(TAG, "ImageAnalysis use case built");
-
-        // Set analyzer for continuous frame processing
         imageAnalysis.setAnalyzer(cameraExecutor, this::processImageProxy);
-        Log.d(TAG, "ImageAnalysis analyzer set");
 
-        // Unbind all use cases before rebinding
+        // Unbind use cases before binding them to avoid conflicts
         cameraProvider.unbindAll();
-        Log.d(TAG, "All use cases unbound");
 
-        // Bind use cases to lifecycle
+        // Bind use cases to the lifecycle
         try {
-            cameraProvider.bindToLifecycle(getViewLifecycleOwner(), cameraSelector, preview, imageAnalysis, videoCapture);
-            Log.d(TAG, "Camera use cases (Preview, ImageAnalysis, VideoCapture) bound to lifecycle");
-
-            // Connect the preview use case to the PreviewView
-            preview.setSurfaceProvider(previewView.getSurfaceProvider());
-            Log.d(TAG, "Preview set to PreviewView");
+            cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageAnalysis, videoCapture);
+            Log.d(TAG, "Camera use cases bound successfully.");
         } catch (Exception e) {
-            Log.e(TAG, "Use case binding failed", e);
-            Toast.makeText(getContext(), "Failed to bind camera use cases: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            Log.e(TAG, "Failed to bind camera use cases", e);
+            Toast.makeText(getContext(), "Failed to bind camera use cases.", Toast.LENGTH_SHORT).show();
         }
     }
+
 //    private void bindCameraUseCases(){
 //        Log.d(TAG, "Binding camera use cases");
 //
@@ -339,70 +342,87 @@ public class VideoPageFragment extends Fragment {
 //            Toast.makeText(getContext(), "Failed to bind camera use cases: " + e.getMessage(), Toast.LENGTH_SHORT).show();
 //        }
 //    }
-@OptIn(markerClass = ExperimentalGetImage.class)
-private void processImageProxy(ImageProxy imageProxy) {
-    @androidx.camera.core.ExperimentalGetImage
-    android.media.Image mediaImage = imageProxy.getImage();
-    if (mediaImage != null) {
-        InputImage image = InputImage.fromMediaImage(mediaImage, imageProxy.getImageInfo().getRotationDegrees());
 
-        // Process the image with pose detection
-        poseDetector.process(image)
-                .addOnSuccessListener(pose -> {
-                    // Draw pose landmarks on overlay
-                    drawPose(pose);
-                })
-                .addOnFailureListener(e -> {
-                    Log.e(TAG, "Pose detection failed", e);
-                })
-                .addOnCompleteListener(task -> {
-                    imageProxy.close(); // Close the proxy when done
-                    Log.d(TAG, "ImageProxy closed");
-                });
-    } else {
-        Log.w(TAG, "mediaImage is null");
-        imageProxy.close();
+    @OptIn(markerClass = ExperimentalGetImage.class)
+    private void processImageProxy(ImageProxy imageProxy) {
+        android.media.Image mediaImage = imageProxy.getImage();
+        if (mediaImage != null) {
+            InputImage image = InputImage.fromMediaImage(mediaImage, imageProxy.getImageInfo().getRotationDegrees());
+            poseDetector.process(image)
+                    .addOnSuccessListener(this::drawPose)
+                    .addOnFailureListener(e -> Log.e(TAG, "Pose detection failed", e))
+                    .addOnCompleteListener(task -> imageProxy.close()); // Close after processing
+        } else {
+            imageProxy.close();
+        }
     }
-}
+
 
     private void drawPose(Pose pose) {
-        if (overlayView == null) {
-            Log.w(TAG, "overlayView is null");
-            return;
-        }
+        if (overlayView == null) return;
 
         Canvas canvas = overlayView.getHolder().lockCanvas();
-        if (canvas == null) {
-            Log.w(TAG, "Canvas is null");
-            return;
-        }
+        if (canvas == null) return;
 
         try {
-            // Clear the canvas
+            // Clear previous drawing
             canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR);
 
+            // Initialize paint for drawing landmarks and connections
             Paint paint = new Paint();
             paint.setColor(Color.GREEN);
             paint.setStrokeWidth(8);
             paint.setStyle(Paint.Style.STROKE);
 
-            // Scale landmarks for drawing
-            float scaleX = (float) overlayView.getWidth() / (float) previewView.getWidth();
-            float scaleY = (float) overlayView.getHeight() / (float) previewView.getHeight();
+            float scaleX = (float) overlayView.getWidth() / previewView.getWidth();
+            float scaleY = (float) overlayView.getHeight() / previewView.getHeight();
 
-            // Draw each landmark
+            // Draw landmarks
             for (PoseLandmark landmark : pose.getAllPoseLandmarks()) {
-                if (landmark == null) continue;
-                float x = landmark.getPosition().x * scaleX;
-                float y = landmark.getPosition().y * scaleY;
-                canvas.drawCircle(x, y, 8, paint);
+                if (landmark != null) {
+                    float x = landmark.getPosition().x * scaleX;
+                    float y = landmark.getPosition().y * scaleY;
+                    canvas.drawCircle(x, y, 8, paint);
+                }
             }
 
-            // Draw skeleton connections (as in previous code)
+            // Draw skeleton lines between key points
+            drawSkeleton(pose, canvas, paint, scaleX, scaleY);
+
         } finally {
             overlayView.getHolder().unlockCanvasAndPost(canvas);
         }
     }
+
+    private void drawSkeleton(Pose pose, Canvas canvas, Paint paint, float scaleX, float scaleY) {
+        int[][] skeletonPairs = {
+                {PoseLandmark.LEFT_SHOULDER, PoseLandmark.RIGHT_SHOULDER},
+                {PoseLandmark.LEFT_SHOULDER, PoseLandmark.LEFT_ELBOW},
+                {PoseLandmark.LEFT_ELBOW, PoseLandmark.LEFT_WRIST},
+                {PoseLandmark.RIGHT_SHOULDER, PoseLandmark.RIGHT_ELBOW},
+                {PoseLandmark.RIGHT_ELBOW, PoseLandmark.RIGHT_WRIST},
+                {PoseLandmark.LEFT_SHOULDER, PoseLandmark.LEFT_HIP},
+                {PoseLandmark.RIGHT_SHOULDER, PoseLandmark.RIGHT_HIP},
+                {PoseLandmark.LEFT_HIP, PoseLandmark.RIGHT_HIP},
+                {PoseLandmark.LEFT_HIP, PoseLandmark.LEFT_KNEE},
+                {PoseLandmark.LEFT_KNEE, PoseLandmark.LEFT_ANKLE},
+                {PoseLandmark.RIGHT_HIP, PoseLandmark.RIGHT_KNEE},
+                {PoseLandmark.RIGHT_KNEE, PoseLandmark.RIGHT_ANKLE}
+        };
+
+        for (int[] pair : skeletonPairs) {
+            PoseLandmark point1 = pose.getPoseLandmark(pair[0]);
+            PoseLandmark point2 = pose.getPoseLandmark(pair[1]);
+            if (point1 != null && point2 != null) {
+                float startX = point1.getPosition().x * scaleX;
+                float startY = point1.getPosition().y * scaleY;
+                float endX = point2.getPosition().x * scaleX;
+                float endY = point2.getPosition().y * scaleY;
+                canvas.drawLine(startX, startY, endX, endY, paint);
+            }
+        }
+    }
+
 //    @OptIn(markerClass = ExperimentalGetImage.class)
 //    private void processImageProxy(ImageProxy imageProxy){
 //        @androidx.camera.core.ExperimentalGetImage
@@ -509,7 +529,16 @@ private void processImageProxy(ImageProxy imageProxy) {
 //        }
 //    }
 
-    private void startRecording(){
+    private void startRecording() {
+        // Check permissions for camera, audio, and storage
+        if (!hasPermissions()) {
+            // If any permission is missing, inform the user and request permissions
+            Toast.makeText(getActivity(), "Permissions required to record video. Please allow permissions.", Toast.LENGTH_SHORT).show();
+            requestPermissions(); // Re-requests permissions if not granted
+            return;
+        }
+
+        // Proceed with recording if permissions are granted
         if (isRecording) {
             Log.w(TAG, "Attempted to start recording while already recording");
             Toast.makeText(getActivity(), "Already recording", Toast.LENGTH_SHORT).show();
@@ -521,7 +550,7 @@ private void processImageProxy(ImageProxy imageProxy) {
         ContentValues contentValues = new ContentValues();
         contentValues.put(MediaStore.MediaColumns.DISPLAY_NAME, "video_" + System.currentTimeMillis() + ".mp4");
         contentValues.put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4");
-        contentValues.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/GymmyGoVideos");
+        contentValues.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/PoseVideos");
 
         MediaStoreOutputOptions outputOptions = new MediaStoreOutputOptions.Builder(
                 requireContext().getContentResolver(),
@@ -571,6 +600,9 @@ private void processImageProxy(ImageProxy imageProxy) {
 
         Log.d(TAG, "Recording has been initiated");
     }
+
+
+
 
     private void stopRecording(){
         if (!isRecording) {
