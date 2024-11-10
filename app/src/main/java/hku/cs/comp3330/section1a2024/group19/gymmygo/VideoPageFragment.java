@@ -1,12 +1,11 @@
 package hku.cs.comp3330.section1a2024.group19.gymmygo;
 
 import android.Manifest;
-import android.content.ContentValues;
 import android.content.pm.PackageManager;
-import android.net.Uri;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.os.Bundle;
 import android.os.Environment;
-import android.provider.MediaStore;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -26,13 +25,11 @@ import androidx.camera.core.ImageAnalysis;
 import androidx.camera.core.ImageProxy;
 import androidx.camera.core.Preview;
 import androidx.camera.lifecycle.ProcessCameraProvider;
-import androidx.camera.video.MediaStoreOutputOptions;
 import androidx.camera.video.Quality;
 import androidx.camera.video.QualitySelector;
 import androidx.camera.video.Recorder;
 import androidx.camera.video.Recording;
 import androidx.camera.video.VideoCapture;
-import androidx.camera.video.VideoRecordEvent;
 import androidx.camera.view.PreviewView;
 import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
@@ -42,8 +39,8 @@ import com.google.mlkit.vision.common.InputImage;
 import com.google.mlkit.vision.pose.PoseDetection;
 import com.google.mlkit.vision.pose.PoseDetector;
 import com.google.mlkit.vision.pose.defaults.PoseDetectorOptions;
-import com.google.mlkit.vision.pose.PoseDetectorOptionsBase;
 
+import java.io.File;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -57,7 +54,6 @@ public class VideoPageFragment extends Fragment {
     private VideoView videoView;
     private Button btnRecord, btnStop, btnSave;
     private boolean isRecording = false;
-    private Uri videoUri;
 
     private ActivityResultLauncher<String[]> requestPermissionLauncher;
 
@@ -78,6 +74,12 @@ public class VideoPageFragment extends Fragment {
     // Frame Throttling
     private long lastAnalysisTimestamp = 0;
     private static final long ANALYSIS_INTERVAL_MS = 200; // Process every 200ms
+
+    // Media Encoder
+    private MediaEncoder mediaEncoder;
+
+    // Video Output Path
+    private String videoOutputPath;
 
     public VideoPageFragment() {
         // Required empty public constructor
@@ -123,14 +125,7 @@ public class VideoPageFragment extends Fragment {
                         Log.w(TAG, "Permissions not granted");
                         Toast.makeText(getContext(), "Permissions not granted", Toast.LENGTH_LONG).show();
                         // Disable camera-related functionalities
-                        if (getView() != null) {
-                            btnRecord = getView().findViewById(R.id.btn_record);
-                            btnStop = getView().findViewById(R.id.btn_stop);
-                            btnSave = getView().findViewById(R.id.btn_save);
-                            btnRecord.setEnabled(false);
-                            btnStop.setEnabled(false);
-                            btnSave.setEnabled(false);
-                        }
+                        disableCameraFunctions();
                     }
                 }
         );
@@ -163,6 +158,17 @@ public class VideoPageFragment extends Fragment {
         });
     }
 
+    private void disableCameraFunctions() {
+        if (getView() != null) {
+            btnRecord = getView().findViewById(R.id.btn_record);
+            btnStop = getView().findViewById(R.id.btn_stop);
+            btnSave = getView().findViewById(R.id.btn_save);
+            btnRecord.setEnabled(false);
+            btnStop.setEnabled(false);
+            btnSave.setEnabled(false);
+        }
+    }
+
     @Override
     public void onDestroy() {
         super.onDestroy();
@@ -173,6 +179,10 @@ public class VideoPageFragment extends Fragment {
         if (poseDetector != null) {
             poseDetector.close();
             Log.d(TAG, "Pose detector closed");
+        }
+        if (mediaEncoder != null) {
+            mediaEncoder.finish();
+            Log.d(TAG, "MediaEncoder finished");
         }
     }
 
@@ -194,7 +204,7 @@ public class VideoPageFragment extends Fragment {
 
         // Initialize VideoCapture Use Case with adjusted QualitySelector
         Recorder recorder = new Recorder.Builder()
-                .setQualitySelector(QualitySelector.from(Quality.HD)) // Changed to Quality.SD for better compatibility
+                .setQualitySelector(QualitySelector.from(Quality.HD))
                 .build();
 
         videoCapture = VideoCapture.withOutput(recorder);
@@ -216,11 +226,11 @@ public class VideoPageFragment extends Fragment {
         });
 
         btnSave.setOnClickListener(v -> {
-            if (videoUri != null) {
+            if (videoOutputPath != null) {
                 Log.d(TAG, "Save button clicked");
-                saveVideo();
+                playVideo();
             } else {
-                Log.w(TAG, "Save button clicked but videoUri is null");
+                Log.w(TAG, "Save button clicked but videoOutputPath is null");
                 Toast.makeText(getActivity(), "No video to save", Toast.LENGTH_SHORT).show();
             }
         });
@@ -316,6 +326,34 @@ public class VideoPageFragment extends Fragment {
                     .addOnSuccessListener(pose -> {
                         // Pass the detected pose to the overlay view
                         poseOverlayView.setPose(pose);
+
+                        // If recording, encode the frame with overlay
+                        if (isRecording && mediaEncoder != null) {
+                            // Convert ImageProxy to Bitmap
+                            Bitmap bitmap = BitmapUtils.yuv420ToBitmap(mediaImage);
+                            if (bitmap == null) {
+                                Log.e(TAG, "Bitmap conversion failed");
+                                return;
+                            }
+
+                            // Draw pose on Bitmap
+                            Canvas canvas = new Canvas(bitmap);
+                            poseOverlayView.draw(canvas);
+
+                            // Convert the Bitmap back to YUV420 byte array
+                            int bitmapWidth = bitmap.getWidth();
+                            int bitmapHeight = bitmap.getHeight();
+                            Log.d(TAG, "Bitmap dimensions: width=" + bitmapWidth + ", height=" + bitmapHeight);
+
+                            byte[] yuvData = BitmapUtils.bitmapToYuv420(bitmap, bitmapWidth, bitmapHeight);
+                            if (yuvData == null) {
+                                Log.e(TAG, "Failed to convert Bitmap to YUV420");
+                                return;
+                            }
+
+                            // Encode the YUV420 frame into video
+                            mediaEncoder.encodeFrame(yuvData);
+                        }
                     })
                     .addOnFailureListener(e -> {
                         Log.e(TAG, "Pose detection failed", e);
@@ -339,58 +377,32 @@ public class VideoPageFragment extends Fragment {
 
         Log.d(TAG, "Starting recording process");
 
-        ContentValues contentValues = new ContentValues();
-        contentValues.put(MediaStore.MediaColumns.DISPLAY_NAME, "video_" + System.currentTimeMillis() + ".mp4");
-        contentValues.put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4");
-        contentValues.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/GymmyGoVideos");
+        // Prepare output directory
+        String directoryPath = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
+                + "/GymmyGoVideos";
+        File directory = new File(directoryPath);
+        if (!directory.exists()) {
+            boolean dirCreated = directory.mkdirs();
+            if (!dirCreated) {
+                Log.e(TAG, "Failed to create directory: " + directoryPath);
+                Toast.makeText(getActivity(), "Failed to create directory for videos", Toast.LENGTH_SHORT).show();
+                return;
+            }
+        }
 
-        MediaStoreOutputOptions outputOptions = new MediaStoreOutputOptions.Builder(
-                requireContext().getContentResolver(),
-                MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
-                .setContentValues(contentValues)
-                .build();
+        // Prepare output path
+        videoOutputPath = directoryPath + "/video_" + System.currentTimeMillis() + ".mp4";
 
-        Log.d(TAG, "Prepared MediaStoreOutputOptions: " + outputOptions.toString());
+        mediaEncoder = new MediaEncoder(videoOutputPath);
 
-        // Start recording
-        recording = videoCapture.getOutput()
-                .prepareRecording(requireContext(), outputOptions)
-                .withAudioEnabled()
-                .start(ContextCompat.getMainExecutor(requireContext()), videoRecordEvent -> {
-                    if (videoRecordEvent instanceof VideoRecordEvent.Start) {
-                        Log.d(TAG, "Recording started");
-                        requireActivity().runOnUiThread(() -> {
-                            btnRecord.setVisibility(View.GONE);
-                            btnStop.setVisibility(View.VISIBLE);
-                            btnSave.setVisibility(View.GONE);
-                            Toast.makeText(getActivity(), "Recording started", Toast.LENGTH_SHORT).show();
-                        });
-                        isRecording = true;
-                    } else if (videoRecordEvent instanceof VideoRecordEvent.Finalize) {
-                        VideoRecordEvent.Finalize finalize = (VideoRecordEvent.Finalize) videoRecordEvent;
-                        if (!finalize.hasError()) {
-                            videoUri = finalize.getOutputResults().getOutputUri();
-                            Log.d(TAG, "Recording completed: " + videoUri);
-
-                            requireActivity().runOnUiThread(() -> {
-                                btnStop.setVisibility(View.GONE);
-                                btnSave.setVisibility(View.VISIBLE);
-                                btnRecord.setVisibility(View.VISIBLE);
-                                Toast.makeText(getActivity(), "Recording stopped", Toast.LENGTH_SHORT).show();
-                            });
-                        } else {
-                            // Handle error
-                            Log.e(TAG, "Recording failed: " + finalize.getError());
-                            requireActivity().runOnUiThread(() -> {
-                                Toast.makeText(getActivity(), "Recording failed", Toast.LENGTH_SHORT).show();
-                            });
-                        }
-                        isRecording = false;
-                        recording = null;
-                    }
-                });
-
+        isRecording = true;
         Log.d(TAG, "Recording has been initiated");
+
+        Toast.makeText(getActivity(), "Recording started", Toast.LENGTH_SHORT).show();
+
+        // Update button visibility
+        btnRecord.setVisibility(View.GONE);
+        btnStop.setVisibility(View.VISIBLE);
     }
 
     private void stopRecording(){
@@ -399,25 +411,33 @@ public class VideoPageFragment extends Fragment {
             Toast.makeText(getActivity(), "Not recording", Toast.LENGTH_SHORT).show();
             return;
         }
-        if (recording != null) {
-            Log.d(TAG, "Stopping recording");
-            recording.stop();
-            // `isRecording` will be set to false in the Finalize callback
+        if (mediaEncoder != null) {
+            mediaEncoder.finish();
+            mediaEncoder = null;
+            Log.d(TAG, "Recording stopped and encoder finished");
+
+            isRecording = false;
+
+            Toast.makeText(getActivity(), "Recording stopped", Toast.LENGTH_SHORT).show();
+
+            // Update button visibility
+            btnStop.setVisibility(View.GONE);
+            btnSave.setVisibility(View.VISIBLE);
         }
     }
 
-    private void saveVideo(){
-        if (videoUri == null){
-            Log.w(TAG, "No video URI found to save");
-            Toast.makeText(getActivity(), "No video to save", Toast.LENGTH_SHORT).show();
+    private void playVideo(){
+        if (videoOutputPath == null){
+            Log.w(TAG, "No video path found to play");
+            Toast.makeText(getActivity(), "No video to play", Toast.LENGTH_SHORT).show();
             return;
         }
 
-        Log.d(TAG, "Saving video to VideoView: " + videoUri.toString());
+        Log.d(TAG, "Playing video: " + videoOutputPath);
 
         // Play the video in VideoView
         videoView.setVisibility(View.VISIBLE);
-        videoView.setVideoURI(videoUri);
+        videoView.setVideoPath(videoOutputPath);
         videoView.start();
 
         // Hide VideoView after playing
@@ -429,6 +449,7 @@ public class VideoPageFragment extends Fragment {
 
         Toast.makeText(getActivity(), "Video saved and playing", Toast.LENGTH_SHORT).show();
 
+        // Update button visibility
         btnSave.setVisibility(View.GONE);
         btnRecord.setVisibility(View.VISIBLE);
     }
