@@ -42,6 +42,7 @@ import com.google.mlkit.vision.common.InputImage;
 import com.google.mlkit.vision.pose.PoseDetection;
 import com.google.mlkit.vision.pose.PoseDetector;
 import com.google.mlkit.vision.pose.defaults.PoseDetectorOptions;
+import com.google.mlkit.vision.pose.PoseDetectorOptionsBase;
 
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;

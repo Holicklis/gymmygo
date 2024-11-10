@@ -49,7 +49,7 @@ dependencies {
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)
     implementation(libs.gson)
-    implementation (libs.pose.detection.accurate)
+
 
     implementation("androidx.activity:activity:1.6.1")
 
@@ -59,8 +59,8 @@ dependencies {
     implementation("androidx.camera:camera-view:1.0.0")
     implementation("androidx.camera:camera-video:1.0.0")
 
-    implementation("com.google.mlkit:pose-detection-accurate:17.0.2") // Latest stable version
+    implementation ("com.google.mlkit:pose-detection:18.0.0-beta5")
 
-    // ML Kit Common (Required for some ML Kit functionalities)
-    implementation("com.google.mlkit:common:17.0.0")
+//    // ML Kit Common (Required for some ML Kit functionalities)
+//    implementation("com.google.mlkit:common:17.0.0")
 }
