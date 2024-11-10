@@ -29,6 +29,7 @@ android {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
     }
+    buildToolsVersion = "34.0.0"
 }
 
 dependencies {
@@ -37,10 +38,29 @@ dependencies {
     implementation(libs.material)
     implementation(libs.activity)
     implementation(libs.constraintlayout)
+    implementation(libs.camera.view)
+    implementation(libs.camera.lifecycle)
+    implementation(libs.vision.common)
+    implementation(libs.pose.detection.common)
+    implementation(libs.pose.detection)
     testImplementation(libs.junit)
     implementation (libs.navigation.fragment)
     implementation (libs.navigation.ui)
     androidTestImplementation(libs.ext.junit)
     androidTestImplementation(libs.espresso.core)
     implementation(libs.gson)
+    implementation (libs.pose.detection.accurate)
+
+    implementation("androidx.activity:activity:1.6.1")
+
+    implementation("androidx.camera:camera-core:1.1.0")
+    implementation("androidx.camera:camera-camera2:1.1.0")
+    implementation("androidx.camera:camera-lifecycle:1.1.0")
+    implementation("androidx.camera:camera-view:1.0.0")
+    implementation("androidx.camera:camera-video:1.0.0")
+
+    implementation("com.google.mlkit:pose-detection-accurate:17.0.2") // Latest stable version
+
+    // ML Kit Common (Required for some ML Kit functionalities)
+    implementation("com.google.mlkit:common:17.0.0")
 }
