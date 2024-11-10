@@ -12,9 +12,9 @@
         android:layout_height="match_parent"
         android:layout_gravity="center" />
 
-    <!-- Overlay for Pose Landmarks -->
-    <SurfaceView
-        android:id="@+id/overlayView"
+    <!-- Custom Overlay for Pose Landmarks -->
+    <hku.cs.comp3330.section1a2024.group19.gymmygo.PoseOverlayView
+        android:id="@+id/poseOverlayView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:background="@android:color/transparent" />
