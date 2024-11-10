@@ -194,11 +194,11 @@ public class VideoPageFragment extends Fragment {
 
         // Initialize VideoCapture Use Case with adjusted QualitySelector
         Recorder recorder = new Recorder.Builder()
-                .setQualitySelector(QualitySelector.from(Quality.SD)) // Changed to Quality.SD for better compatibility
+                .setQualitySelector(QualitySelector.from(Quality.HD)) // Changed to Quality.SD for better compatibility
                 .build();
 
         videoCapture = VideoCapture.withOutput(recorder);
-        Log.d(TAG, "VideoCapture initialized with Quality.SD");
+        Log.d(TAG, "VideoCapture initialized with Quality.HD");
 
         // Set up buttons
         btnRecord.setOnClickListener(v -> {
