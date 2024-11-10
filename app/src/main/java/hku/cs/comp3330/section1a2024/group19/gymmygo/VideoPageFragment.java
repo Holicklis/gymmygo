@@ -1,616 +1,459 @@
 package hku.cs.comp3330.section1a2024.group19.gymmygo;
 
 import android.Manifest;
-import android.content.ContentValues;
+import android.app.AlertDialog;
+import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Matrix;
 import android.graphics.Paint;
+import android.graphics.SurfaceTexture;
+import android.hardware.camera2.*;
+import android.media.MediaRecorder;
 import android.net.Uri;
 import android.os.Bundle;
-import android.os.Environment;
-import android.provider.MediaStore;
+import android.provider.Settings;
 import android.util.Log;
-import android.view.LayoutInflater;
-import android.view.SurfaceView;
-import android.view.View;
-import android.view.ViewGroup;
+import android.util.Size;
+import android.view.*;
 import android.widget.Button;
 import android.widget.Toast;
-import android.widget.VideoView;
+import android.hardware.camera2.params.StreamConfigurationMap;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
-import androidx.annotation.OptIn;
-import androidx.camera.core.CameraSelector;
-import androidx.camera.core.ExperimentalGetImage;
-import androidx.camera.core.ImageAnalysis;
-import androidx.camera.core.ImageProxy;
-import androidx.camera.core.Preview;
-import androidx.camera.lifecycle.ProcessCameraProvider;
-import androidx.camera.video.MediaStoreOutputOptions;
-import androidx.camera.video.Recorder;
-import androidx.camera.video.Quality;
-import androidx.camera.video.QualitySelector;
-import androidx.camera.video.VideoCapture;
-import androidx.camera.video.VideoRecordEvent;
-import androidx.camera.view.PreviewView;
 import androidx.core.content.ContextCompat;
+import androidx.core.app.ActivityCompat;
 import androidx.fragment.app.Fragment;
 
-import com.google.common.util.concurrent.ListenableFuture;
-import com.google.mlkit.vision.common.InputImage;
-import com.google.mlkit.vision.pose.Pose;
-import com.google.mlkit.vision.pose.PoseDetector;
-import com.google.mlkit.vision.pose.PoseDetection;
+
+import com.google.mlkit.vision.pose.*;
 import com.google.mlkit.vision.pose.defaults.PoseDetectorOptions;
-import com.google.mlkit.vision.pose.PoseLandmark;
+import com.google.mlkit.vision.common.InputImage;
 
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-
-import androidx.camera.video.Recording;
+import java.io.File;
+import java.io.IOException;
+import java.util.*;
 
 public class VideoPageFragment extends Fragment {
 
-    private static final String TAG = "VideoPageFragment";
+    private final String[] REQUIRED_PERMISSIONS = new String[]{
+            Manifest.permission.CAMERA,
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.WRITE_EXTERNAL_STORAGE
+    };
 
-    private PreviewView previewView;
-    private SurfaceView overlayView;
-    private VideoView videoView;
-    private Button btnRecord, btnStop, btnSave;
+    private TextureView textureView;
+    private Button recordButton;
+
+    private CameraDevice cameraDevice;
+    private CameraCaptureSession captureSession;
+    private MediaRecorder mediaRecorder;
     private boolean isRecording = false;
-    private Uri videoUri;
+    private Size videoSize;
+    private String cameraId;
 
-    private ActivityResultLauncher<String[]> requestPermissionLauncher;
-
-    private ExecutorService cameraExecutor;
-
-    // Pose Detector
     private PoseDetector poseDetector;
+    Display displayOverlay;
 
-    // CameraX
-    private ProcessCameraProvider cameraProvider;
-    private Preview preview;
-    private ImageAnalysis imageAnalysis;
+    private ActivityResultLauncher<String[]> permissionLauncher;
+    ArrayList<Pose> poseArrayList = new ArrayList<>();
+    ArrayList<Bitmap> bitmapArrayList = new ArrayList<>();
+    ArrayList<Bitmap> bitmap4DisplayArrayList = new ArrayList<>();
+    Canvas canvas;
+    Paint mPaint = new Paint();
 
-    // VideoCapture
-    private VideoCapture<Recorder> videoCapture;
-    private Recording recording;
 
-    public VideoPageFragment() {
-        // Required empty public constructor
-    }
-
-    public static VideoPageFragment newInstance() {
-        return new VideoPageFragment();
-    }
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // Initialize CameraX executor
-        cameraExecutor = Executors.newSingleThreadExecutor();
-        Log.d(TAG, "Camera executor initialized");
-
-        // Initialize Pose Detector with STREAM_MODE
-        PoseDetectorOptions options =
-                new PoseDetectorOptions.Builder()
-                        .setDetectorMode(PoseDetectorOptions.STREAM_MODE)
-                        .build();
+        // Initialize pose detector
+        PoseDetectorOptions options = new PoseDetectorOptions.Builder()
+                .setDetectorMode(PoseDetectorOptions.STREAM_MODE)
+                .build();
         poseDetector = PoseDetection.getClient(options);
-        Log.d(TAG, "Pose detector initialized with STREAM_MODE");
-        Toast.makeText(getContext(), "Pose detector initialized", Toast.LENGTH_SHORT).show();
 
-        // Initialize the permissions launcher
-        requestPermissionLauncher = registerForActivityResult(
+        mPaint.setColor(Color.GREEN);
+        mPaint.setStyle(Paint.Style.FILL_AND_STROKE);
+        mPaint.setStrokeWidth(10);
+
+        // Initialize the permission launcher
+        permissionLauncher = registerForActivityResult(
                 new ActivityResultContracts.RequestMultiplePermissions(),
                 result -> {
                     boolean allGranted = true;
-                    for (Boolean granted : result.values()) {
-                        if (!granted) {
-                            allGranted = false;
-                            break;
+                    boolean shouldShowRationale = false;
+                    for (Map.Entry<String, Boolean> entry : result.entrySet()) {
+                        String permission = entry.getKey();
+                        Boolean granted = entry.getValue();
+                        allGranted &= granted;
+                        if (!granted && !ActivityCompat.shouldShowRequestPermissionRationale(requireActivity(), permission)) {
+                            shouldShowRationale = true;
                         }
                     }
                     if (allGranted) {
-                        Log.d(TAG, "All permissions granted");
-                        // Camera setup will be initiated in onViewCreated()
-                    } else {
-                        Log.w(TAG, "Permissions not granted");
-                        Toast.makeText(getContext(), "Permissions not granted", Toast.LENGTH_LONG).show();
-                        // Optionally, disable functionality or close the fragment
+                        startCamera();
                     }
                 }
         );
-
-        // Request permissions if not already granted
-        if (!hasPermissions()) {
-            Log.d(TAG, "Requesting permissions");
-            requestPermissions();
-        } else {
-            Log.d(TAG, "All permissions already granted");
-            // Camera setup will be initiated in onViewCreated()
-        }
-    }
-
-    private boolean hasPermissions() {
-        boolean hasCamera = ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED;
-        boolean hasAudio = ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
-        boolean hasWriteStorage = ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
-        boolean hasReadStorage = ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
-
-        Log.d(TAG, "Permissions - CAMERA: " + hasCamera + ", RECORD_AUDIO: " + hasAudio +
-                ", WRITE_EXTERNAL_STORAGE: " + hasWriteStorage + ", READ_EXTERNAL_STORAGE: " + hasReadStorage);
-
-        return hasCamera && hasAudio && hasWriteStorage && hasReadStorage;
-    }
-
-    private void requestPermissions() {
-        Log.d(TAG, "Launching permission request");
-        requestPermissionLauncher.launch(new String[]{
-                Manifest.permission.CAMERA,
-                Manifest.permission.RECORD_AUDIO,
-                Manifest.permission.WRITE_EXTERNAL_STORAGE,
-                Manifest.permission.READ_EXTERNAL_STORAGE
-        });
     }
 
     @Override
-    public void onDestroy() {
-        super.onDestroy();
-        if (cameraExecutor != null) {
-            cameraExecutor.shutdown();
-            Log.d(TAG, "Camera executor shut down");
-        }
-        if (poseDetector != null) {
-            poseDetector.close();
-            Log.d(TAG, "Pose detector closed");
-        }
-    }
+    public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container,
+                             Bundle savedInstanceState) {
+        View view = inflater.inflate(R.layout.fragment_video_page, container, false);
 
-    @Override
-    public View onCreateView(LayoutInflater inflater, ViewGroup container,
-                             Bundle savedInstanceState){
-        View rootView = inflater.inflate(R.layout.fragment_video_page, container, false);
-        Log.d(TAG, "Fragment view created");
+        textureView = view.findViewById(R.id.texture_view);
+        recordButton = view.findViewById(R.id.btn_record);
+        displayOverlay = view.findViewById(R.id.displayOverlay);
 
-        // Initialize views
-        previewView = rootView.findViewById(R.id.previewView);
-        overlayView = rootView.findViewById(R.id.overlayView);
-        videoView = rootView.findViewById(R.id.video_view);
-        btnRecord = rootView.findViewById(R.id.btn_record);
-        btnStop = rootView.findViewById(R.id.btn_stop);
-        btnSave = rootView.findViewById(R.id.btn_save);
-
-        Log.d(TAG, "UI components initialized");
-
-        // Configure overlayView for transparency and Z-order
-        overlayView.setZOrderOnTop(true);
-        overlayView.getHolder().setFormat(android.graphics.PixelFormat.TRANSLUCENT);
-        Log.d(TAG, "OverlayView configured for transparency and Z-order");
-
-        // Initialize VideoCapture Use Case
-        Recorder recorder = new Recorder.Builder()
-                .setQualitySelector(QualitySelector.from(Quality.SD)) // Changed to Quality.HIGH for compatibility
-                .build();
-
-        videoCapture = VideoCapture.withOutput(recorder);
-        Log.d(TAG, "VideoCapture initialized with Quality.HIGH");
-
-        // Set up buttons
-        btnRecord.setOnClickListener(v -> {
-            if (!isRecording) {
-                Log.d(TAG, "Record button clicked");
-                startRecording();
-            }
-        });
-
-        btnStop.setOnClickListener(v -> {
+        recordButton.setOnClickListener(v -> {
             if (isRecording) {
-                Log.d(TAG, "Stop button clicked");
-                stopRecording();
-            }
-        });
-
-        btnSave.setOnClickListener(v -> {
-            if (videoUri != null) {
-                Log.d(TAG, "Save button clicked");
-                saveVideo();
+                stopRecordingVideo();
+                recordButton.setText("Record");
             } else {
-                Log.w(TAG, "Save button clicked but videoUri is null");
-                Toast.makeText(getActivity(), "No video to save", Toast.LENGTH_SHORT).show();
+                startRecordingVideo();
+                recordButton.setText("Stop");
             }
         });
 
-        return rootView;
+        textureView.setSurfaceTextureListener(textureListener);
+
+        return view;
+    }
+
+    private final TextureView.SurfaceTextureListener textureListener = new TextureView.SurfaceTextureListener() {
+        @Override
+        public void onSurfaceTextureAvailable(@NonNull SurfaceTexture surfaceTexture, int width, int height) {
+            if (allPermissionsGranted()) {
+                startCamera();
+            } else {
+                permissionLauncher.launch(REQUIRED_PERMISSIONS);
+            }
+        }
+
+        @Override
+        public void onSurfaceTextureSizeChanged(@NonNull SurfaceTexture surfaceTexture, int width, int height) {
+            // Handle texture size change if needed
+        }
+
+        @Override
+        public boolean onSurfaceTextureDestroyed(@NonNull SurfaceTexture surfaceTexture) {
+            return false;
+        }
+
+        @Override
+        public void onSurfaceTextureUpdated(@NonNull SurfaceTexture surfaceTexture) {
+            // Analyze frame for pose detection
+            analyzeFrame();
+        }
+    };
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        if (textureView.isAvailable()) {
+            if (allPermissionsGranted()) {
+                startCamera();
+            } else {
+                permissionLauncher.launch(REQUIRED_PERMISSIONS);
+            }
+        } else {
+            textureView.setSurfaceTextureListener(textureListener);
+        }
     }
 
     @Override
-    public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
-        super.onViewCreated(view, savedInstanceState);
-        Log.d(TAG, "View created. Initiating camera setup if permissions are granted.");
-        if (hasPermissions()) {
-            startCamera();
-        }
+    public void onPause() {
+        super.onPause();
     }
 
-    private void startCamera(){
-        ListenableFuture<ProcessCameraProvider> cameraProviderFuture =
-                ProcessCameraProvider.getInstance(requireContext());
-
-        cameraProviderFuture.addListener(() -> {
-            try{
-                cameraProvider = cameraProviderFuture.get();
-                Log.d(TAG, "CameraProvider obtained");
-
-                bindCameraUseCases();
-
-            } catch (ExecutionException | InterruptedException e){
-                Log.e(TAG, "Error starting camera", e);
-                Toast.makeText(getContext(), "Error starting camera: " + e.getMessage(), Toast.LENGTH_LONG).show();
+    private boolean allPermissionsGranted() {
+        for (String permission : REQUIRED_PERMISSIONS) {
+            if (ContextCompat.checkSelfPermission(requireContext(), permission)
+                    != PackageManager.PERMISSION_GRANTED) {
+                return false;
             }
-        }, ContextCompat.getMainExecutor(requireContext()));
+        }
+        return true;
     }
-    private void bindCameraUseCases() {
-        Log.d(TAG, "Binding camera use cases");
 
-        // Preview
-        preview = new Preview.Builder()
-                .build();
-        Log.d(TAG, "Preview use case built");
-
-        // Select back camera
-        CameraSelector cameraSelector = new CameraSelector.Builder()
-                .requireLensFacing(CameraSelector.LENS_FACING_BACK)
-                .build();
-        Log.d(TAG, "CameraSelector built");
-
-        // ImageAnalysis for Pose Detection
-        imageAnalysis = new ImageAnalysis.Builder()
-                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                .build();
-        Log.d(TAG, "ImageAnalysis use case built");
-
-        // Set analyzer for continuous frame processing
-        imageAnalysis.setAnalyzer(cameraExecutor, this::processImageProxy);
-        Log.d(TAG, "ImageAnalysis analyzer set");
-
-        // Unbind all use cases before rebinding
-        cameraProvider.unbindAll();
-        Log.d(TAG, "All use cases unbound");
-
-        // Bind use cases to lifecycle
+    private void startCamera() {
+        CameraManager manager = (CameraManager) requireContext().getSystemService(Context.CAMERA_SERVICE);
         try {
-            cameraProvider.bindToLifecycle(getViewLifecycleOwner(), cameraSelector, preview, imageAnalysis, videoCapture);
-            Log.d(TAG, "Camera use cases (Preview, ImageAnalysis, VideoCapture) bound to lifecycle");
+            for (String cameraId : manager.getCameraIdList()) {
+                CameraCharacteristics characteristics = manager.getCameraCharacteristics(cameraId);
 
-            // Connect the preview use case to the PreviewView
-            preview.setSurfaceProvider(previewView.getSurfaceProvider());
-            Log.d(TAG, "Preview set to PreviewView");
-        } catch (Exception e) {
-            Log.e(TAG, "Use case binding failed", e);
-            Toast.makeText(getContext(), "Failed to bind camera use cases: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                // Skip front-facing cameras
+                Integer facing = characteristics.get(CameraCharacteristics.LENS_FACING);
+                if (facing != null && facing == CameraCharacteristics.LENS_FACING_BACK) {
+                    continue;
+                }
+
+                StreamConfigurationMap map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+                if (map == null) {
+                    continue;
+                }
+
+                Size[] availableSizes = map.getOutputSizes(SurfaceTexture.class);
+                videoSize = chooseVideoSize(availableSizes);
+
+                this.cameraId = cameraId;
+                break;
+            }
+
+            if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.CAMERA)
+                    != PackageManager.PERMISSION_GRANTED) {
+                return;
+            }
+
+            manager.openCamera(cameraId, stateCallback, null);
+
+        } catch (CameraAccessException e) {
+            e.printStackTrace();
         }
     }
-//    private void bindCameraUseCases(){
-//        Log.d(TAG, "Binding camera use cases");
-//
-//        // Preview
-//        preview = new Preview.Builder()
-//                .build();
-//        Log.d(TAG, "Preview use case built");
-//
-//        // Select back camera
-//        CameraSelector cameraSelector = new CameraSelector.Builder()
-//                .requireLensFacing(CameraSelector.LENS_FACING_BACK)
-//                .build();
-//        Log.d(TAG, "CameraSelector built");
-//
-//        // ImageAnalysis for Pose Detection
-//        imageAnalysis = new ImageAnalysis.Builder()
-//                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-//                .build();
-//        Log.d(TAG, "ImageAnalysis use case built");
-//
-//        imageAnalysis.setAnalyzer(cameraExecutor, imageProxy -> {
-//            processImageProxy(imageProxy);
-//        });
-//        Log.d(TAG, "ImageAnalysis analyzer set");
-//
-//        // Unbind all use cases before rebinding
-//        cameraProvider.unbindAll();
-//        Log.d(TAG, "All use cases unbound");
-//
-//        // Bind use cases to lifecycle
-//        try {
-//            cameraProvider.bindToLifecycle(getViewLifecycleOwner(), cameraSelector, preview, imageAnalysis, videoCapture);
-//            Log.d(TAG, "Camera use cases (Preview, ImageAnalysis, VideoCapture) bound to lifecycle");
-//
-//            // Connect the preview use case to the PreviewView
-//            preview.setSurfaceProvider(previewView.getSurfaceProvider());
-//            Log.d(TAG, "Preview set to PreviewView");
-//        } catch (Exception e) {
-//            Log.e(TAG, "Use case binding failed", e);
-//            Toast.makeText(getContext(), "Failed to bind camera use cases: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-//        }
-//    }
-@OptIn(markerClass = ExperimentalGetImage.class)
-private void processImageProxy(ImageProxy imageProxy) {
-    @androidx.camera.core.ExperimentalGetImage
-    android.media.Image mediaImage = imageProxy.getImage();
-    if (mediaImage != null) {
-        InputImage image = InputImage.fromMediaImage(mediaImage, imageProxy.getImageInfo().getRotationDegrees());
 
-        // Process the image with pose detection
+    private final CameraDevice.StateCallback stateCallback = new CameraDevice.StateCallback() {
+        @Override
+        public void onOpened(@NonNull CameraDevice camera) {
+            cameraDevice = camera;
+            if (isRecording) {
+                try {
+                    startRecordingSession();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            } else {
+                startPreviewSession();
+            }
+        }
+
+        @Override
+        public void onDisconnected(@NonNull CameraDevice camera) {
+            cameraDevice.close();
+            cameraDevice = null;
+        }
+
+        @Override
+        public void onError(@NonNull CameraDevice camera, int error) {
+            cameraDevice.close();
+            cameraDevice = null;
+        }
+    };
+
+    private void startPreviewSession() {
+        try {
+            SurfaceTexture surfaceTexture = textureView.getSurfaceTexture();
+            assert surfaceTexture != null;
+            surfaceTexture.setDefaultBufferSize(videoSize.getWidth(), videoSize.getHeight());
+            Surface previewSurface = new Surface(surfaceTexture);
+
+            final CaptureRequest.Builder previewBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
+            previewBuilder.addTarget(previewSurface);
+
+            cameraDevice.createCaptureSession(
+                    Collections.singletonList(previewSurface),
+                    new CameraCaptureSession.StateCallback() {
+                        @Override
+                        public void onConfigured(@NonNull CameraCaptureSession session) {
+                            captureSession = session;
+                            try {
+                                captureSession.setRepeatingRequest(previewBuilder.build(), captureCallback, null);
+                            } catch (CameraAccessException e) {
+                                e.printStackTrace();
+                            }
+                        }
+
+                        @Override
+                        public void onConfigureFailed(@NonNull CameraCaptureSession session) {
+                            Toast.makeText(getContext(), "Failed to start camera preview.", Toast.LENGTH_SHORT).show();
+                        }
+                    }, null
+            );
+        } catch (CameraAccessException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void startRecordingSession() throws IOException {
+        setupMediaRecorder();
+
+        SurfaceTexture surfaceTexture = textureView.getSurfaceTexture();
+        assert surfaceTexture != null;
+        surfaceTexture.setDefaultBufferSize(videoSize.getWidth(), videoSize.getHeight());
+        Surface previewSurface = new Surface(surfaceTexture);
+        Surface recorderSurface = mediaRecorder.getSurface();
+
+        try {
+            final CaptureRequest.Builder recordingBuilder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
+            recordingBuilder.addTarget(previewSurface);
+            recordingBuilder.addTarget(recorderSurface);
+
+            List<Surface> surfaces = Arrays.asList(previewSurface, recorderSurface);
+
+            cameraDevice.createCaptureSession(
+                    surfaces,
+                    new CameraCaptureSession.StateCallback() {
+                        @Override
+                        public void onConfigured(@NonNull CameraCaptureSession session) {
+                            captureSession = session;
+                            try {
+                                captureSession.setRepeatingRequest(recordingBuilder.build(), captureCallback, null);
+                                mediaRecorder.start();
+                            } catch (CameraAccessException e) {
+                                e.printStackTrace();
+                            }
+                        }
+
+                        @Override
+                        public void onConfigureFailed(@NonNull CameraCaptureSession session) {
+                            Toast.makeText(getContext(), "Failed to start recording session.", Toast.LENGTH_SHORT).show();
+                        }
+                    }, null
+            );
+        } catch (CameraAccessException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void setupMediaRecorder() throws IOException {
+        mediaRecorder = new MediaRecorder();
+
+        mediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
+        mediaRecorder.setVideoSource(MediaRecorder.VideoSource.SURFACE);
+
+        mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
+        mediaRecorder.setOutputFile(getVideoFilePath());
+        mediaRecorder.setVideoEncodingBitRate(10000000);
+        mediaRecorder.setVideoFrameRate(30);
+        mediaRecorder.setVideoSize(videoSize.getWidth(), videoSize.getHeight());
+        mediaRecorder.setVideoEncoder(MediaRecorder.VideoEncoder.H264);
+        mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
+
+        mediaRecorder.prepare();
+    }
+
+    private String getVideoFilePath() {
+        final File dir = requireActivity().getExternalFilesDir(null);
+        return (dir == null ? "" : (dir.getAbsolutePath() + "/")) + System.currentTimeMillis() + ".mp4";
+    }
+
+    private void startRecordingVideo() {
+        if (cameraDevice == null || !textureView.isAvailable() || videoSize == null) {
+            return;
+        }
+        isRecording = true;
+        startCamera();
+    }
+
+    private void stopRecordingVideo() {
+        isRecording = false;
+        mediaRecorder.stop();
+        mediaRecorder.reset();
+        startCamera();
+    }
+
+    private final CameraCaptureSession.CaptureCallback captureCallback = new CameraCaptureSession.CaptureCallback() {
+        // Implement capture callback methods if needed
+    };
+
+    private void processImage(InputImage image) {
         poseDetector.process(image)
                 .addOnSuccessListener(pose -> {
-                    // Draw pose landmarks on overlay
-                    drawPose(pose);
-                })
-                .addOnFailureListener(e -> {
-                    Log.e(TAG, "Pose detection failed", e);
-                })
-                .addOnCompleteListener(task -> {
-                    imageProxy.close(); // Close the proxy when done
-                    Log.d(TAG, "ImageProxy closed");
-                });
-    } else {
-        Log.w(TAG, "mediaImage is null");
-        imageProxy.close();
-    }
-}
+                    // Save the pose into the poseArrayList
+                    poseArrayList.add(pose);
 
-    private void drawPose(Pose pose) {
-        if (overlayView == null) {
-            Log.w(TAG, "overlayView is null");
-            return;
-        }
-
-        Canvas canvas = overlayView.getHolder().lockCanvas();
-        if (canvas == null) {
-            Log.w(TAG, "Canvas is null");
-            return;
-        }
-
-        try {
-            // Clear the canvas
-            canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR);
-
-            Paint paint = new Paint();
-            paint.setColor(Color.GREEN);
-            paint.setStrokeWidth(8);
-            paint.setStyle(Paint.Style.STROKE);
-
-            // Scale landmarks for drawing
-            float scaleX = (float) overlayView.getWidth() / (float) previewView.getWidth();
-            float scaleY = (float) overlayView.getHeight() / (float) previewView.getHeight();
-
-            // Draw each landmark
-            for (PoseLandmark landmark : pose.getAllPoseLandmarks()) {
-                if (landmark == null) continue;
-                float x = landmark.getPosition().x * scaleX;
-                float y = landmark.getPosition().y * scaleY;
-                canvas.drawCircle(x, y, 8, paint);
-            }
-
-            // Draw skeleton connections (as in previous code)
-        } finally {
-            overlayView.getHolder().unlockCanvasAndPost(canvas);
-        }
-    }
-//    @OptIn(markerClass = ExperimentalGetImage.class)
-//    private void processImageProxy(ImageProxy imageProxy){
-//        @androidx.camera.core.ExperimentalGetImage
-//        android.media.Image mediaImage = imageProxy.getImage();
-//        if (mediaImage != null){
-//            InputImage image = InputImage.fromMediaImage(mediaImage, imageProxy.getImageInfo().getRotationDegrees());
-//
-//            poseDetector.process(image)
-//                    .addOnSuccessListener(pose -> {
-//                        drawPose(pose);
-//                    })
-//                    .addOnFailureListener(e -> {
-//                        Log.e(TAG, "Pose detection failed", e);
-//                    })
-//                    .addOnCompleteListener(task -> {
-//                        imageProxy.close();
-//                        Log.d(TAG, "ImageProxy closed");
-//                    });
-//        } else {
-//            Log.w(TAG, "mediaImage is null");
-//            imageProxy.close();
-//        }
-//    }
-//
-//    private void drawPose(Pose pose){
-//        if (overlayView == null){
-//            Log.w(TAG, "overlayView is null");
-//            return;
-//        }
-//
-//        Canvas canvas = overlayView.getHolder().lockCanvas();
-//        if (canvas == null){
-//            Log.w(TAG, "Canvas is null");
-//            return;
-//        }
-//
-//        try {
-//            // Clear the canvas
-//            canvas.drawColor(Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR);
-//            Log.d(TAG, "Canvas cleared");
-//
-//            Paint paint = new Paint();
-//            paint.setColor(Color.GREEN);
-//            paint.setStrokeWidth(8);
-//            paint.setStyle(Paint.Style.STROKE);
-//
-//            // Calculate scaling factors
-//            float scaleX = (float) overlayView.getWidth() / (float) previewView.getWidth();
-//            float scaleY = (float) overlayView.getHeight() / (float) previewView.getHeight();
-//
-//            // Draw landmarks with scaling
-//            for (PoseLandmark landmark : pose.getAllPoseLandmarks()){
-//                if (landmark == null){
-//                    continue;
-//                }
-//                float x = landmark.getPosition().x * scaleX;
-//                float y = landmark.getPosition().y * scaleY;
-//                canvas.drawCircle(x, y, 8, paint);
-//
-//                // Log landmark positions
-//                Log.d(TAG, "Landmark: " + landmark.getLandmarkType() + " Position: (" + x + ", " + y + ")");
-//            }
-//
-//            // Define pairs of landmarks to connect for drawing the skeleton
-//            int[][] skeletonPairs = {
-//                    {PoseLandmark.LEFT_SHOULDER, PoseLandmark.RIGHT_SHOULDER},
-//                    {PoseLandmark.LEFT_SHOULDER, PoseLandmark.LEFT_ELBOW},
-//                    {PoseLandmark.LEFT_ELBOW, PoseLandmark.LEFT_WRIST},
-//                    {PoseLandmark.RIGHT_SHOULDER, PoseLandmark.RIGHT_ELBOW},
-//                    {PoseLandmark.RIGHT_ELBOW, PoseLandmark.RIGHT_WRIST},
-//                    {PoseLandmark.LEFT_SHOULDER, PoseLandmark.LEFT_HIP},
-//                    {PoseLandmark.RIGHT_SHOULDER, PoseLandmark.RIGHT_HIP},
-//                    {PoseLandmark.LEFT_HIP, PoseLandmark.RIGHT_HIP},
-//                    {PoseLandmark.LEFT_HIP, PoseLandmark.LEFT_KNEE},
-//                    {PoseLandmark.LEFT_KNEE, PoseLandmark.LEFT_ANKLE},
-//                    {PoseLandmark.RIGHT_HIP, PoseLandmark.RIGHT_KNEE},
-//                    {PoseLandmark.RIGHT_KNEE, PoseLandmark.RIGHT_ANKLE},
-//                    {PoseLandmark.LEFT_SHOULDER, PoseLandmark.RIGHT_HIP},
-//                    {PoseLandmark.RIGHT_SHOULDER, PoseLandmark.LEFT_HIP}
-//            };
-//
-//            // Draw skeleton lines with scaling
-//            for (int[] pair : skeletonPairs){
-//                PoseLandmark first = pose.getPoseLandmark(pair[0]);
-//                PoseLandmark second = pose.getPoseLandmark(pair[1]);
-//                if (first != null && second != null){
-//                    float startX = first.getPosition().x * scaleX;
-//                    float startY = first.getPosition().y * scaleY;
-//                    float endX = second.getPosition().x * scaleX;
-//                    float endY = second.getPosition().y * scaleY;
-//
-//                    canvas.drawLine(startX, startY, endX, endY, paint);
-//
-//                    // Log skeleton line drawing
-//                    Log.d(TAG, "Drawing line between " + first.getLandmarkType() + " and " + second.getLandmarkType());
-//                }
-//            }
-//
-//            Log.d(TAG, "Pose drawn successfully");
-//        } finally {
-//            // Ensure the canvas is always unlocked and posted
-//            overlayView.getHolder().unlockCanvasAndPost(canvas);
-//            Log.d(TAG, "Canvas unlocked and posted");
-//        }
-//    }
-
-    private void startRecording(){
-        if (isRecording) {
-            Log.w(TAG, "Attempted to start recording while already recording");
-            Toast.makeText(getActivity(), "Already recording", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        Log.d(TAG, "Starting recording process");
-
-        ContentValues contentValues = new ContentValues();
-        contentValues.put(MediaStore.MediaColumns.DISPLAY_NAME, "video_" + System.currentTimeMillis() + ".mp4");
-        contentValues.put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4");
-        contentValues.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/GymmyGoVideos");
-
-        MediaStoreOutputOptions outputOptions = new MediaStoreOutputOptions.Builder(
-                requireContext().getContentResolver(),
-                MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
-                .setContentValues(contentValues)
-                .build();
-
-        Log.d(TAG, "Prepared MediaStoreOutputOptions: " + outputOptions.toString());
-
-        // Start recording
-        recording = videoCapture.getOutput()
-                .prepareRecording(requireContext(), outputOptions)
-                .withAudioEnabled()
-                .start(ContextCompat.getMainExecutor(requireContext()), videoRecordEvent -> {
-                    if (videoRecordEvent instanceof VideoRecordEvent.Start) {
-                        Log.d(TAG, "Recording started");
-                        getActivity().runOnUiThread(() -> {
-                            btnRecord.setVisibility(View.GONE);
-                            btnStop.setVisibility(View.VISIBLE);
-                            btnSave.setVisibility(View.GONE);
-                            Toast.makeText(getActivity(), "Recording started", Toast.LENGTH_SHORT).show();
-                        });
-                        isRecording = true;
-                    } else if (videoRecordEvent instanceof VideoRecordEvent.Finalize) {
-                        VideoRecordEvent.Finalize finalize = (VideoRecordEvent.Finalize) videoRecordEvent;
-                        if (!finalize.hasError()) {
-                            videoUri = finalize.getOutputResults().getOutputUri();
-                            Log.d(TAG, "Recording completed: " + videoUri);
-
-                            getActivity().runOnUiThread(() -> {
-                                btnStop.setVisibility(View.GONE);
-                                btnSave.setVisibility(View.VISIBLE);
-                                btnRecord.setVisibility(View.VISIBLE);
-                                Toast.makeText(getActivity(), "Recording stopped", Toast.LENGTH_SHORT).show();
-                            });
-                        } else {
-                            // Handle error
-                            Log.e(TAG, "Recording failed: " + finalize.getError());
-                            getActivity().runOnUiThread(() -> {
-                                Toast.makeText(getActivity(), "Recording failed", Toast.LENGTH_SHORT).show();
-                            });
-                        }
-                        isRecording = false;
-                        recording = null;
+                    // Get the bitmap from the InputImage
+                    Bitmap bitmap = image.getBitmapInternal();
+                    if (bitmap != null) {
+                        // Save the bitmap into bitmapArrayList
+                        bitmapArrayList.add(bitmap);
                     }
-                });
 
-        Log.d(TAG, "Recording has been initiated");
+                    // Now that we have the pose and bitmap, we can draw the pose
+                    drawPoseOnBitmap(pose, bitmap);
+                })
+                .addOnFailureListener(Throwable::printStackTrace);
     }
 
-    private void stopRecording(){
-        if (!isRecording) {
-            Log.w(TAG, "Attempted to stop recording while not recording");
-            Toast.makeText(getActivity(), "Not recording", Toast.LENGTH_SHORT).show();
-            return;
+    private void drawPoseOnBitmap(Pose pose, Bitmap bitmap) {
+        // Create a mutable copy of the bitmap to draw on
+        Bitmap mutableBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true);
+        Canvas canvas = new Canvas(mutableBitmap);
+
+        // Set up paint for drawing
+        Paint paint = new Paint();
+        paint.setColor(Color.YELLOW);
+        paint.setStrokeWidth(8f);
+        paint.setStyle(Paint.Style.FILL);
+
+        // Extract landmarks from the pose
+        List<PoseLandmark> landmarks = pose.getAllPoseLandmarks();
+        for (PoseLandmark landmark : landmarks) {
+            float x = landmark.getPosition().x;
+            float y = landmark.getPosition().y;
+            canvas.drawCircle(x, y, 10f, paint);
         }
-        if (recording != null) {
-            Log.d(TAG, "Stopping recording");
-            recording.stop();
-            // `isRecording` will be set to false in the Finalize callback
-        }
-    }
 
-    private void saveVideo(){
-        if (videoUri == null){
-            Log.w(TAG, "No video URI found to save");
-            Toast.makeText(getActivity(), "No video to save", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        Log.d(TAG, "Saving video to VideoView: " + videoUri.toString());
-
-        // Play the video in VideoView
-        videoView.setVisibility(View.VISIBLE);
-        videoView.setVideoURI(videoUri);
-        videoView.start();
-
-        // Hide VideoView after playing
-        videoView.setOnCompletionListener(mp -> {
-            videoView.setVisibility(View.GONE); // Hide the VideoView after playback
-            previewView.setVisibility(View.VISIBLE); // Show the camera preview again
-            Log.d(TAG, "Video playback completed, returning to camera preview");
+        // Update your Display class with the new bitmap
+        requireActivity().runOnUiThread(() -> {
+            // Pass the bitmap to the Display class
+            displayOverlay.setBitmap(mutableBitmap);
         });
-
-        Toast.makeText(getActivity(), "Video saved and playing", Toast.LENGTH_SHORT).show();
-
-        btnSave.setVisibility(View.GONE);
-        btnRecord.setVisibility(View.VISIBLE);
     }
 
+    private int getRotationDegrees() {
+        int rotation = requireActivity().getWindowManager().getDefaultDisplay().getRotation();
+        switch (rotation) {
+            case Surface.ROTATION_0:
+                return 0;
+            case Surface.ROTATION_90:
+                return 90;
+            case Surface.ROTATION_180:
+                return 180;
+            case Surface.ROTATION_270:
+                return 270;
+            default:
+                return 0;
+        }
+    }
 
+    private void analyzeFrame() {
+        // Capture frame from TextureView and process it
+        Bitmap bitmap = textureView.getBitmap();
+        if (bitmap != null) {
+            InputImage image = InputImage.fromBitmap(bitmap, 0);
+            processImage(image);
+        }
+    }
+
+    private Size chooseVideoSize(Size[] choices) {
+        for (Size size : choices) {
+            if (size.getWidth() == size.getHeight() * 16 / 9 && size.getWidth() <= 1920) {
+                return size;
+            }
+        }
+        return choices[0];
+    }
+
+    private void showPermissionDeniedDialog() {
+        new AlertDialog.Builder(requireContext())
+                .setTitle("Permissions Required")
+                .setMessage("Please enable permissions in app settings.")
+                .setPositiveButton("Open Settings", (dialog, which) -> {
+                    Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                    Uri uri = Uri.fromParts("package", requireContext().getPackageName(), null);
+                    intent.setData(uri);
+                    startActivity(intent);
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
 }
